@@ -4,6 +4,7 @@ import { createInterface } from 'readline';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
 import { authenticate } from './auth';
+import { markdownToGoogleDocs } from './markdown';
 
 const program = new Command();
 
@@ -11,8 +12,11 @@ async function findOrCreateDoc(title: string, folderId: string, auth: OAuth2Clie
     const drive = google.drive({ version: 'v3', auth });
     const docs = google.docs({ version: 'v1', auth });
 
+    // escape ' in title
+    const escapedTitle = title.replace(/'/g, "\\'");
+
     const response = await drive.files.list({
-        q: `name = '${title}' and '${folderId}' in parents and trashed = false`,
+        q: `name = '${escapedTitle}' and '${folderId}' in parents and trashed = false`,
         spaces: 'drive',
         fields: 'files(id, name)',
     });
@@ -42,23 +46,17 @@ async function findOrCreateDoc(title: string, folderId: string, auth: OAuth2Clie
     }
 }
 
-async function updateHtml(googleDocId: string, rawHtml: string, auth: OAuth2Client) {
-    console.log(`Updating document ${googleDocId} with provided HTML content.`);
+async function updateHtml(googleDocId: string, rawMarkdown: string, auth: OAuth2Client) {
+    console.log(`Updating document ${googleDocId} with provided markdown content.`);
+
+    const googleDocStructure = markdownToGoogleDocs(rawMarkdown)
+    console.log('Google Docs structure:', googleDocStructure);
     const docs = google.docs({ version: 'v1', auth });
     await docs.documents.batchUpdate({
         documentId: googleDocId,
         requestBody: {
-            requests: [
-                {
-                    insertText: {
-                        location: {
-                            index: 1,
-                        },
-                        text: rawHtml,
-                    },
-                },
-            ],
-        },
+            requests: googleDocStructure
+        }
     });
 }
 

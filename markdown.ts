@@ -65,11 +65,9 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       return
     }
 
-    if (inlineStack.length > 1) {
-      throw new Error("Multiple inline tags not supported")
-    }
+    const stackItem = inlineStack.pop()
 
-    if (inlineStack[0].type === "item") {
+    if (stackItem.type === "item") {
       requests[requests.length - 1].insertText.text += "\n"
       textLocation += 1
       inlineStack = []
@@ -79,7 +77,7 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
     requests.push(
       {
         updateTextStyle: {
-          ...inlineTagToGoogleDocs(inlineStack[0]),
+          ...inlineTagToGoogleDocs(stackItem),
           range: {
             startIndex: inlineStart,
             endIndex: textLocation,
@@ -88,24 +86,10 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       },
     )
 
-    // if (inlineStack[0].type === "em") {
-    //   requests.push(
-    //     {
-    //       updateTextStyle: {
-    //         textStyle: {
-    //           italic: false,
-    //         },
-    //         fields: "italic",
-    //         range: {
-    //           startIndex: textLocation + 1,
-    //           endIndex: textLocation +  3,
-    //         },
-    //       }
-    //     }
-    //   )
-    // }
-
-    inlineStack = []
+    // inlineStack = []
+    if (inlineStack.length > 1) {
+      throw new Error("Multiple inline tags not supported")
+    }
   }
 
   function renderBlockStyles() {
