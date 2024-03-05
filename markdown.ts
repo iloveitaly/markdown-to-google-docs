@@ -1,8 +1,54 @@
 import Markdoc from "@markdoc/markdoc";
 
+function blockTagToGoogleDocs(node) {
+  switch (node.type) {
+    case "heading":
+      return {
+        paragraphStyle: {
+          namedStyleType: "HEADING_1",
+        },
+        fields: "namedStyleType",
+      }
+    default:
+      throw new Error(`Unsupported block tag type: ${node.type}`);
+  }
+}
+
+function inlineTagToGoogleDocs(node) {
+  switch (node.type) {
+    case "strong":
+      return {
+        textStyle: {
+          bold: true,
+        },
+        fields: "bold",
+      }
+    case "link":
+      return {
+        textStyle: {
+          link: {
+            url: node.attributes.href,
+          },
+        },
+        fields: "link",
+      }
+    case "em":
+      return {
+        textStyle: {
+          italic: true,
+        },
+        fields: 'italic',
+      }
+    default:
+      throw new Error(`Unsupported inline tag type: ${node.type}`);
+
+  }
+}
+
 export function markdownToGoogleDocs(rawMarkdown: string) {
   const ast = Markdoc.parse(rawMarkdown, { location: true });
   const errors = Markdoc.validate(ast);
+  debugger
 
   const requests = [];
 
@@ -19,50 +65,97 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       return
     }
 
+    if (inlineStack.length > 1) {
+      throw new Error("Multiple inline tags not supported")
+    }
+
+    if (inlineStack[0].type === "item") {
+      requests[requests.length - 1].insertText.text += "\n"
+      textLocation += 1
+      inlineStack = []
+      return
+    }
+
     requests.push(
       {
         updateTextStyle: {
+          ...inlineTagToGoogleDocs(inlineStack[0]),
           range: {
             startIndex: inlineStart,
             endIndex: textLocation,
           },
-          textStyle: {
-            bold: true,
-          },
-          fields: "bold",
         }
       },
     )
 
+    // if (inlineStack[0].type === "em") {
+    //   requests.push(
+    //     {
+    //       updateTextStyle: {
+    //         textStyle: {
+    //           italic: false,
+    //         },
+    //         fields: "italic",
+    //         range: {
+    //           startIndex: textLocation + 1,
+    //           endIndex: textLocation +  3,
+    //         },
+    //       }
+    //     }
+    //   )
+    // }
+
     inlineStack = []
   }
+
   function renderBlockStyles() {
     if (blockStack.length === 0) {
       return
     }
 
-    // assert(blockStack.length === 1, "Block stack should only have one item")
+    if (blockStack.length > 1) {
+      throw new Error("Multiple block tags not supported")
+    }
 
     requests[requests.length - 1].insertText.text += "\n"
 
-    requests.push(
-      {
-        updateParagraphStyle: {
-          range: {
-            startIndex: blockStart,
-            endIndex: textLocation,
-          },
-          paragraphStyle: {
-            namedStyleType: "HEADING_1",
-          },
-          fields: "namedStyleType",
-        }
-      },
-    )
+    // assert(blockStack.length === 1, "Block stack should only have one item")
 
+    if (blockStack[0].type === "paragraph") {
+      requests[requests.length - 1].insertText.text += "\n"
+      textLocation += 1
+    } else     if(blockStack[0].type === "list") {
+      requests.push(
+        {
+          createParagraphBullets: {
+            range: {
+              startIndex: blockStart,
+              endIndex: textLocation,
+            },
+            bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
+          }
+        }
+      )
+    } else {
+      requests.push(
+        {
+          updateParagraphStyle: {
+            range: {
+              startIndex: blockStart,
+              endIndex: textLocation,
+            },
+            ...blockTagToGoogleDocs(blockStack[0]),
+          }
+        },
+      )
+    }
+
+
+    // for the extra newline
     textLocation += 1
 
     blockStack = []
+    blockStart = null
   }
 
   // the walk descends into the tree and calls the callback for each node
@@ -72,18 +165,23 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       continue
     }
 
-    if (!node.inline) {
+    if (!node.inline && node.type !== "item") {
+      // although items are block level, we do not treat them as such
       renderBlockStyles()
     }
 
     switch (node.type) {
+      case "paragraph":
       case "heading":
+      case "list":
         blockStack.push(node)
         break;
 
       case "text":
         let textContent = node.attributes.content
-        blockStart = textLocation
+        if (blockStart === null) {
+          blockStart = textLocation
+        }
 
         requests.push({
           insertText: {
@@ -95,14 +193,26 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
         })
 
         textLocation += textContent.length
+
         renderInlineStyles()
+
         break
-      case "paragraph":
-        debugger
-        break;
       case "strong":
+      case "em":
+      case "link":
+      case "item":
         inlineStart = textLocation
         inlineStack.push(node)
+        break
+      // case "list":
+      //   if (node.inline) {
+      //     throw new Error("Inline list not supported / this shouldn't be possible")
+      //   }
+
+      //   // attributes.ordered
+      //   // debugger
+      //   break
+        // "list item"
         break
       case "inline":
         // TODO I don't understand what this is
@@ -113,6 +223,20 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
   }
 
   console.log("hi")
+
+  // sort all requests so the insertText goes first, then the style applications
+  requests.sort((a, b) => {
+    // if both are insertText, then sort by location.index
+    if (a.insertText && b.insertText) {
+      return a.insertText.location.index - b.insertText.location.index
+    }
+
+    if (a.insertText) {
+      return -1
+    }
+
+    return 1
+  })
 
   return requests
 }
