@@ -48,7 +48,8 @@ function inlineTagToGoogleDocs(node) {
 export function markdownToGoogleDocs(rawMarkdown: string) {
   const ast = Markdoc.parse(rawMarkdown, { location: true });
   const errors = Markdoc.validate(ast);
-  debugger
+
+  // TODO should check errors
 
   const requests = [];
 
@@ -205,8 +206,6 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
         throw new Error(`Unsupported node type: ${node.type}`);
     }
   }
-
-  console.log("hi")
 
   // sort all requests so the insertText goes first, then the style applications
   requests.sort((a, b) => {
