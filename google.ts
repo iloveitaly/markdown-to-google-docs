@@ -2,14 +2,15 @@ import { google } from 'googleapis';
 import { markdownToGoogleDocs } from './markdown';
 
 export async function updateHtml(googleDocId: string, rawMarkdown: string, auth: OAuth2Client, opts: { wipe: boolean } = { wipe: false }) {
-    console.log(`Updating document ${googleDocId} with provided markdown content.`);
+  console.log(`Updating document ${googleDocId} with provided markdown content.`);
+
+    if (opts.wipe) {
+        await wipeDocumentContents(auth, googleDocId);
+    }
 
     const googleDocStructure = markdownToGoogleDocs(rawMarkdown)
     console.log('Google Docs structure:', googleDocStructure);
 
-    if (opts.wipe) {
-        wipeDocumentContents(auth, googleDocId);
-    }
 
     const docs = google.docs({ version: 'v1', auth });
 
@@ -71,12 +72,15 @@ export async function findOrCreateDoc(title: string, folderId: string, auth: OAu
 }
 
 
-async function wipeDocumentContents(auth, documentId) {
+export async function wipeDocumentContents(auth, documentId) {
   const docs = google.docs({ version: 'v1', auth });
   const document = await docs.documents.get({ documentId: documentId });
-  const contentLength = document.data.body.content.length;
 
-  if (contentLength <= 2) {
+  // document.data.body.content is an array of 'google doc structures'
+  // get the max value of `endIndex` to use for the deletion call
+  const maxIndex = Math.max(...document.data.body.content?.map((content) => content.endIndex))
+
+  if (maxIndex <= 2) {
     return
   }
 
@@ -87,8 +91,8 @@ async function wipeDocumentContents(auth, documentId) {
     {
       deleteContentRange: {
         range: {
-          startIndex: 1,  // Start just after the document start
-          endIndex: contentLength - 1,  // End just before the document end
+          startIndex: 1,
+          endIndex: maxIndex - 1,
         },
       },
     },

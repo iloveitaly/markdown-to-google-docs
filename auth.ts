@@ -1,7 +1,6 @@
 import { OAuth2Client } from 'google-auth-library';
 import { writeFileSync } from 'fs';
 import { existsSync, readFileSync } from 'fs';
-import * as path from "path"
 import * as url from "url"
 
 import opn from 'opn';
@@ -57,7 +56,7 @@ export function getClient(opts: { credentialsPath?: null | string, credentialCon
 
   if (!credentialsContent) {
     // then let's try to read the credentials from the file
-    const credentialsPath = opts.credentialsPath ?? path.join(CREDENTIALS_FOLDER, CREDENTIALS_PATH)
+    const credentialsPath = opts.credentialsPath ?? CREDENTIALS_PATH
 
     if (!existsSync(credentialsPath)) {
       throw new Error(`Credentials file not found at path: ${credentialsPath}`);
