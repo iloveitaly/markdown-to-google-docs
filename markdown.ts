@@ -3,9 +3,10 @@ import Markdoc from "@markdoc/markdoc";
 function blockTagToGoogleDocs(node) {
   switch (node.type) {
     case "heading":
+      const headingLevel = node.attributes.level
       return {
         paragraphStyle: {
-          namedStyleType: "HEADING_1",
+          namedStyleType: `HEADING_${headingLevel}`,
         },
         fields: "namedStyleType",
       }
@@ -62,36 +63,47 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
   let textLocation = 1
 
   function renderInlineStyles() {
-    if (inlineStack.length === 0) {
-      return
-    }
+    while (inlineStack.length > 0) {
+      const stackItem = inlineStack.shift();
 
-    const stackItem = inlineStack.pop()
-
-    if (stackItem.type === "item") {
-      requests[requests.length - 1].insertText.text += "\n"
-      textLocation += 1
-      inlineStack = []
-      return
-    }
-
-    requests.push(
-      {
-        updateTextStyle: {
-          ...inlineTagToGoogleDocs(stackItem),
-          range: {
-            startIndex: inlineStart,
-            endIndex: textLocation,
-          },
+      if (stackItem.type === "item") {
+        if (addNewline()) {
+          textLocation += 1;
         }
-      },
-    )
-
-    // inlineStack = []
-    if (inlineStack.length > 1) {
-      throw new Error("Multiple inline tags not supported")
+      } else {
+        requests.push({
+          updateTextStyle: {
+            ...inlineTagToGoogleDocs(stackItem),
+            range: {
+              startIndex: inlineStart,
+              endIndex: textLocation,
+            },
+          },
+        });
+      }
     }
   }
+
+  function addNewline() {
+    // find last insertText object in `requests`
+    let lastInsertTextIndex = null;
+
+    for (let i = requests.length - 1; i >= 0; i--) {
+      if (requests[i].hasOwnProperty('insertText')) {
+        lastInsertTextIndex = i
+        break;
+      }
+    }
+
+    if (!lastInsertTextIndex) {
+      return false
+    }
+
+    requests[lastInsertTextIndex].insertText.text += "\n"
+
+    return true
+  }
+
 
   function renderBlockStyles() {
     if (blockStack.length === 0) {
@@ -102,12 +114,12 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       throw new Error("Multiple block tags not supported")
     }
 
-    requests[requests.length - 1].insertText.text += "\n"
+    const newlineAdded= addNewline()
 
     // assert(blockStack.length === 1, "Block stack should only have one item")
 
     if (blockStack[0].type === "paragraph") {
-      requests[requests.length - 1].insertText.text += "\n"
+      addNewline()
       textLocation += 1
     } else     if(blockStack[0].type === "list") {
       requests.push(
@@ -136,8 +148,9 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
     }
 
 
-    // for the extra newline
-    textLocation += 1
+    if (newlineAdded) {
+      textLocation += 1
+    }
 
     blockStack = []
     blockStart = null
