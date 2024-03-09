@@ -1,7 +1,10 @@
 import { Command } from 'commander';
 import { authenticate } from './auth';
-import { existsSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { createInterface } from 'readline';
+import { findOrCreateDoc, updateHtml } from './google';
+import { google } from 'googleapis';
+import { invariant } from '@epic-web/invariant';
 
 async function htmlFromStdin(): Promise<string> {
     const rl = createInterface({
@@ -23,6 +26,51 @@ async function htmlFromStdin(): Promise<string> {
     });
 }
 
+// js is so lame
+function isEqual(a: any, b: any) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+async function create(title: string, folderId: string, options: { file?: string, credentials?: string }) {
+    const auth = await authenticate(options.credentials);
+    const docId = await findOrCreateDoc(title, folderId, auth);
+
+    let rawHtml: string;
+
+    if (options.file) {
+        console.log(`Reading HTML content from ${options.file}`);
+        rawHtml = readFileSync(options.file, 'utf8');
+    } else {
+        rawHtml = await htmlFromStdin();
+    }
+
+    await updateHtml(docId, rawHtml, auth);
+}
+
+async function get(title: string, options: { credentials?: string }) {
+    const auth = await authenticate(options.credentials);
+
+    const drive = google.drive({ version: 'v3', auth });
+    const searchResponse = await drive.files.list({
+        q: `name = '${title}' and trashed = false`,
+        spaces: 'drive'
+    })
+
+    if (searchResponse.data.files && searchResponse.data.files.length != 1) {
+        console.error(`Expected 1 file, found ${searchResponse.data.files.length}`);
+        return;
+    }
+
+    const docId = searchResponse.data.files[0].id
+    const docs = google.docs({ version: 'v1', auth });
+    const docResult = await docs.documents.get({ documentId: docId });
+
+    const googleDocKeys = Object.keys(docResult.data.body)
+    invariant(isEqual(googleDocKeys, ['content']), `additional keys in google doc body ${googleDocKeys}`);
+
+    console.log(JSON.stringify(docResult.data.body.content, null, 2));
+}
+
 
 const program = new Command();
 
@@ -37,20 +85,12 @@ program.command('create')
   .argument('<folderId>', 'Folder ID to store the document in Google Drive')
   .option('-f, --file <path>', 'HTML file to use as content')
   .option('-c, --credentials <path>', 'Path to Google API credentials JSON file')
-  .action(async (title, folderId, options) => {
-    const auth = await authenticate(options.credentials);
-    const docId = await findOrCreateDoc(title, folderId, auth);
+  .action(create);
 
-    let rawHtml: string;
-
-    if (options.file) {
-        console.log(`Reading HTML content from ${options.file}`);
-        rawHtml = readFileSync(options.file, 'utf8');
-    } else {
-        rawHtml = await htmlFromStdin();
-    }
-
-    await updateHtml(docId, rawHtml, auth);
-  });
+program.command('get')
+    .description("Get the internal structure of a google doc, mostly for debugging")
+    .argument('<title>', 'Title of the document')
+    .option('-c, --credentials <path>', 'Path to Google API credentials JSON file')
+    .action(get);
 
 program.parse(process.argv);
