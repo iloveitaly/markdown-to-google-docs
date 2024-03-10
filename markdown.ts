@@ -1,6 +1,7 @@
-import Markdoc from "@markdoc/markdoc";
+import { invariant } from "@epic-web/invariant";
+import Markdoc, { type Node } from "@markdoc/markdoc";
 
-function blockTagToGoogleDocs(node) {
+function blockTagToGoogleDocs(node: Node): Object {
   switch (node.type) {
     case "heading":
       const headingLevel = node.attributes.level
@@ -15,8 +16,28 @@ function blockTagToGoogleDocs(node) {
   }
 }
 
-function inlineTagToGoogleDocs(node) {
+function inlineTagToGoogleDocs(node: Node): Object {
   switch (node.type) {
+    case "code":
+      return {
+              textStyle: {
+        weightedFontFamily: {
+          fontFamily: 'Consolas',
+          weight: 400,
+        },
+        backgroundColor: {
+          color: {
+            rgbColor: {
+              red: 0.97,
+              green: 0.97,
+              blue: 0.97,
+            }
+          }
+        },
+      },
+      fields: 'weightedFontFamily,backgroundColor',
+      }
+
     case "strong":
       return {
         textStyle: {
@@ -54,37 +75,37 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
 
   const requests = [];
 
-  let inlineStack = []
-  let inlineStart = null
-
-  let blockStack = []
-  let blockStart = null
+  let inlineStack: {location: number, node: Node}[] = []
+  let blockStack: {location: number, node: Node}[] = []
 
   let textLocation = 1
 
   function renderInlineStyles() {
-    while (inlineStack.length > 0) {
-      const stackItem = inlineStack.shift();
+    if (inlineStack.length === 0) {
+      return
+    }
+    const stackItem = inlineStack.pop();
+    invariant(stackItem, "must have at least one item")
 
-      if (stackItem.type === "item") {
-        if (addNewline()) {
+      if (stackItem.node.type === "item") {
+          addNewline()
           textLocation += 1;
-        }
       } else {
         requests.push({
           updateTextStyle: {
-            ...inlineTagToGoogleDocs(stackItem),
+            ...inlineTagToGoogleDocs(stackItem.node),
             range: {
-              startIndex: inlineStart,
+              startIndex: stackItem.location,
               endIndex: textLocation,
             },
           },
         });
       }
-    }
   }
 
-  function addNewline() {
+  function addNewline(): void {
+    // adds newline to the last text request in the stack
+
     // find last insertText object in `requests`
     let lastInsertTextIndex = null;
 
@@ -95,38 +116,55 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       }
     }
 
-    if (!lastInsertTextIndex) {
-      return false
-    }
+    invariant(lastInsertTextIndex !== null, "always should have an index if adding a newline")
 
     requests[lastInsertTextIndex].insertText.text += "\n"
-
-    return true
   }
 
-
-  function renderBlockStyles() {
+  function renderBlockStyles(currentNode: Node | null) {
     if (blockStack.length === 0) {
       return
     }
 
-    if (blockStack.length > 1) {
-      throw new Error("Multiple block tags not supported")
+    if (requests.length === 0) {
+      return
     }
 
-    const newlineAdded= addNewline()
+    // TODO there can be nested blocks (lists), we need to support this
+    // if (blockStack.length > 1) {
+    //   throw new Error("Multiple block tags not supported")
+    // }
 
-    // assert(blockStack.length === 1, "Block stack should only have one item")
 
-    if (blockStack[0].type === "paragraph") {
+    console.log(blockStack)
+    for (let i = blockStack.length - 1; i >= 0; i--) {
+      // this doesn't work: the stack never gets rendered
+      const stopRender = blockStack[i].node.type == "list" && currentNode != null && currentNode.type == "item"
+      if (stopRender) {
+        break
+      }
+
+      const blockItem = blockStack.pop()
+    // while (blockItem = blockStack.pop()) {
+
+      // const blockItem = blockStack.pop()
+    // invariant(blockItem, "we know there is one item")
+
+    // invariant(blockItem.location !== textLocation, `start and ending range should never be the same ${blockItem.node.type}`)
+
+    addNewline()
+
+    if (blockItem.node.type === "paragraph") {
       addNewline()
       textLocation += 1
-    } else     if(blockStack[0].type === "list") {
+    } else if (blockItem.node.type == "item") {
+      // noop, all we need is a newline
+    } else if (blockItem.node.type === "list") {
       requests.push(
         {
           createParagraphBullets: {
             range: {
-              startIndex: blockStart,
+              startIndex: blockItem.location,
               endIndex: textLocation,
             },
             bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
@@ -138,23 +176,23 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
         {
           updateParagraphStyle: {
             range: {
-              startIndex: blockStart,
+              startIndex: blockItem.location,
               endIndex: textLocation,
             },
-            ...blockTagToGoogleDocs(blockStack[0]),
+            ...blockTagToGoogleDocs(blockItem.node),
           }
         },
       )
     }
 
-
-    if (newlineAdded) {
       textLocation += 1
-    }
-
-    blockStack = []
-    blockStart = null
+      if (stopRender) {
+        break
+      }
   }
+  }
+
+  console.log([...ast.walk()])
 
   // the walk descends into the tree and calls the callback for each node
   for (const node of ast.walk()) {
@@ -163,23 +201,35 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       continue
     }
 
-    if (!node.inline && node.type !== "item") {
+    // I think we are going to have to special case items here
+    // items are inline-block in a sense: we want to render a newline when (a) we aren't in a list anymore or (b) we encountered the next item
+
+        if (!node.inline) {
+      renderInlineStyles()
+
+      // items are inline, but we don't want to close out the list block until all items have been consumed
+      console.log("rendering block styles from node: ", node.type)
       // although items are block level, we do not treat them as such
-      renderBlockStyles()
+      renderBlockStyles(node)
     }
+
+
 
     switch (node.type) {
       case "paragraph":
       case "heading":
+      case "item":
       case "list":
-        blockStack.push(node)
+        blockStack.push({ location: textLocation, node: node })
         break;
 
+      case "code":
+        // inline styles with also contain text
+        inlineStack.push({ location: textLocation, node: node})
+
+      case "code":
       case "text":
         let textContent = node.attributes.content
-        if (blockStart === null) {
-          blockStart = textLocation
-        }
 
         requests.push({
           insertText: {
@@ -195,12 +245,12 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
         renderInlineStyles()
 
         break
+
       case "strong":
       case "em":
       case "link":
-      case "item":
-        inlineStart = textLocation
-        inlineStack.push(node)
+        invariant(node.attributes.content === undefined, `no content should exist in inline tags '${node.type}'. Content: ${node.attributes.content}`)
+        inlineStack.push({ location: textLocation, node: node })
         break
       // case "list":
       //   if (node.inline) {
@@ -211,14 +261,12 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       //   // debugger
       //   break
         // "list item"
-        break
-      case "inline":
-        // TODO I don't understand what this is
-        break;
       default:
         throw new Error(`Unsupported node type: ${node.type}`);
     }
   }
+
+  renderBlockStyles(null)
 
   // sort all requests so the insertText goes first, then the style applications
   requests.sort((a, b) => {
