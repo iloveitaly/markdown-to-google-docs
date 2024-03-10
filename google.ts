@@ -23,14 +23,57 @@ export async function updateHtml(googleDocId: string, rawMarkdown: string, auth:
 }
 
 export async function hasOpenComments(auth, fileId) {
+  /*
+[
+  {
+    "id": "AAABI8IN_Ik",
+    "kind": "drive#comment",
+    "createdTime": "2024-03-07T18:24:06.250Z",
+    "modifiedTime": "2024-03-08T12:49:48.670Z",
+    "resolved": false,
+    "anchor": "kix.e0w1ht1izr6l",
+    "replies": [
+      {
+        "id": "AAABG9rtr_o",
+        "kind": "drive#reply",
+        "createdTime": "2024-03-08T12:49:48.670Z",
+        "modifiedTime": "2024-03-08T12:49:48.670Z",
+        "author": {
+          "displayName": "Example User",
+          "kind": "drive#user",
+          "me": true,
+          "photoLink": "//example.com/photo.jpg"
+        },
+        "deleted": false,
+        "htmlContent": "Example reply content with <b>some HTML</b>.",
+        "content": "Example reply content."
+      }
+    ],
+    "author": {
+      "displayName": "Another Example User",
+      "kind": "drive#user",
+      "me": false,
+      "photoLink": "//example.com/another_photo.jpg"
+    },
+    "deleted": false,
+    "htmlContent": "Example comment content with <b>HTML bold</b>.",
+    "content": "Example comment content.",
+    "quotedFileContent": {
+      "mimeType": "text/html",
+      "value": "Example quoted content."
+    }
+  }
+]
+*/
+
   const drive = google.drive({ version: 'v3', auth });
   const response = await drive.comments.list({
     fileId: fileId,
-    fields: 'comments(status)',
+    fields: 'comments',
   });
 
   const comments = response.data.comments;
-  return comments.some(comment => comment.status === 'open');
+  return comments.some(comment => comment.resolved === false || comment.deleted === false);
 }
 
 export async function findOrCreateDoc(title: string, folderId: string, auth: OAuth2Client): Promise<string> {
