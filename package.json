@@ -1,4 +1,11 @@
 {
+  "description": "A CLI and libs to convert markdown to Google Docs",
+  "keywords": [
+    "markdown",
+    "google",
+    "docs"
+  ],
+  "homepage": "https://github.com/iloveitaly/markdown-to-google-docs",
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",
     "@markdoc/markdoc": "^0.4.0",
