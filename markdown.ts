@@ -252,6 +252,12 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
         invariant(node.attributes.content === undefined, `no content should exist in inline tags '${node.type}'. Content: ${node.attributes.content}`)
         inlineStack.push({ location: textLocation, node: node })
         break
+      case "hr":
+        // hr is not supported by the REST API
+        // https://stackoverflow.com/questions/59501947/is-it-possible-to-insert-a-horizontal-rule-with-google-docs-api
+        // TODO if this is ever supported by the gdocs api, add support for it!
+        break
+
       // case "list":
       //   if (node.inline) {
       //     throw new Error("Inline list not supported / this shouldn't be possible")
