@@ -1,6 +1,8 @@
 import { invariant } from "@epic-web/invariant";
 import Markdoc, { type Node } from "@markdoc/markdoc";
 
+// https://developers.google.com/docs/api/reference/rest/v1/documents/request
+
 function blockTagToGoogleDocs(node: Node): Object {
   switch (node.type) {
     case "heading":
@@ -154,7 +156,7 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
 
     addNewline()
 
-    if (blockItem.node.type === "paragraph") {
+    if (blockItem.node.type === "paragraph" || blockItem.node.type == "blockquote") {
       addNewline()
       textLocation += 1
     } else if (blockItem.node.type == "item") {
@@ -219,6 +221,8 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       case "paragraph":
       case "heading":
       case "item":
+      // TODO blockquote should really be different!
+      case "blockquote":
       case "list":
         blockStack.push({ location: textLocation, node: node })
         break;
@@ -257,6 +261,9 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
         // https://stackoverflow.com/questions/59501947/is-it-possible-to-insert-a-horizontal-rule-with-google-docs-api
         // TODO if this is ever supported by the gdocs api, add support for it!
         break
+      case "softbreak":
+        // TODO unclear what this is and where it is used...
+        break
 
       // case "list":
       //   if (node.inline) {
@@ -266,7 +273,11 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       //   // attributes.ordered
       //   // debugger
       //   break
-        // "list item"
+      // "list item"
+      case "image":
+        // TODO these will be hard
+        break
+
       default:
         throw new Error(`Unsupported node type: ${node.type}`);
     }
