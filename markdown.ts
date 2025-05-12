@@ -1,5 +1,5 @@
 import { invariant } from "@epic-web/invariant";
-import Markdoc, { type Node } from "@markdoc/markdoc";
+import Markdoc, { Tokenizer, type Node } from "@markdoc/markdoc";
 
 // https://developers.google.com/docs/api/reference/rest/v1/documents/request
 
@@ -70,8 +70,14 @@ function inlineTagToGoogleDocs(node: Node): Object {
 }
 
 export function markdownToGoogleDocs(rawMarkdown: string) {
-  const ast = Markdoc.parse(rawMarkdown, { location: true });
+  // a custom tokenizer that allows us to parse comments so we can remove them!
+  const tokenizer = new Tokenizer({allowComments: true});
+  const tokenizedMarkdown = tokenizer.tokenize(rawMarkdown)
+
+  const ast = Markdoc.parse(tokenizedMarkdown, {  location: true });
   const errors = Markdoc.validate(ast);
+
+  console.log(ast)
 
   // TODO should check errors
 
@@ -276,6 +282,10 @@ export function markdownToGoogleDocs(rawMarkdown: string) {
       // "list item"
       case "image":
         // TODO these will be hard
+        break
+      
+      // we don't want to render HTML comments in the gdoc
+      case "comment":
         break
 
       default:
