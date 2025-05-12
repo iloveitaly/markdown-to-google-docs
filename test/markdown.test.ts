@@ -119,8 +119,12 @@ test("html comments are ignored", async () => {
 
   // The comment should not appear in any insertText
   const allText = JSON.stringify(googleStructure);
+
   expect(allText).not.toContain("This is a comment");
+  expect(allText).not.toContain("multi-line comment");
+  
   expect(allText).toContain("This is a file with");
   expect(allText).toContain("But this is not removed.");
+
   console.log(allText)
 });
