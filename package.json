@@ -8,9 +8,9 @@
   "homepage": "https://github.com/iloveitaly/markdown-to-google-docs",
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",
-    "@markdoc/markdoc": "^0.4.0",
-    "commander": "^12.0.0",
-    "googleapis": "^137.1.0",
+    "@markdoc/markdoc": "^0.5.1",
+    "commander": "^13.1.0",
+    "googleapis": "^148.0.0",
     "opn": "^6.0.0"
   },
   "bin": "cli.ts",
