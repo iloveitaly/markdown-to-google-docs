@@ -1,25 +1,31 @@
-import { google } from 'googleapis';
-import { markdownToGoogleDocs } from './markdown';
+import { google } from "googleapis";
+import { markdownToGoogleDocs } from "./markdown";
 
-export async function updateHtml(googleDocId: string, rawMarkdown: string, auth: OAuth2Client, opts: { wipe: boolean } = { wipe: false }) {
-  console.log(`Updating document ${googleDocId} with provided markdown content.`);
+export async function updateHtml(
+  googleDocId: string,
+  rawMarkdown: string,
+  auth: OAuth2Client,
+  opts: { wipe: boolean } = { wipe: false },
+) {
+  console.log(
+    `Updating document ${googleDocId} with provided markdown content.`,
+  );
 
-    if (opts.wipe) {
-        await wipeDocumentContents(auth, googleDocId);
-    }
+  if (opts.wipe) {
+    await wipeDocumentContents(auth, googleDocId);
+  }
 
-    const googleDocStructure = markdownToGoogleDocs(rawMarkdown)
-    console.log('Google Docs structure:', googleDocStructure);
+  const googleDocStructure = markdownToGoogleDocs(rawMarkdown);
+  console.log("Google Docs structure:", googleDocStructure);
 
+  const docs = google.docs({ version: "v1", auth });
 
-    const docs = google.docs({ version: 'v1', auth });
-
-    await docs.documents.batchUpdate({
-        documentId: googleDocId,
-        requestBody: {
-            requests: googleDocStructure
-        }
-    });
+  await docs.documents.batchUpdate({
+    documentId: googleDocId,
+    requestBody: {
+      requests: googleDocStructure,
+    },
+  });
 }
 
 export async function hasOpenComments(auth, fileId) {
@@ -66,65 +72,72 @@ export async function hasOpenComments(auth, fileId) {
 ]
 */
 
-  const drive = google.drive({ version: 'v3', auth });
+  const drive = google.drive({ version: "v3", auth });
   const response = await drive.comments.list({
     fileId: fileId,
-    fields: 'comments',
+    fields: "comments",
   });
 
   const comments = response.data.comments;
-  return comments.some(comment => comment.resolved === false || comment.deleted === false);
+  return comments.some(
+    (comment) => comment.resolved === false || comment.deleted === false,
+  );
 }
 
-export async function findOrCreateDoc(title: string, folderId: string, auth: OAuth2Client): Promise<string> {
-    const drive = google.drive({ version: 'v3', auth });
-    const docs = google.docs({ version: 'v1', auth });
+export async function findOrCreateDoc(
+  title: string,
+  folderId: string,
+  auth: OAuth2Client,
+): Promise<string> {
+  const drive = google.drive({ version: "v3", auth });
+  const docs = google.docs({ version: "v1", auth });
 
-    // escape ' in title
-    const escapedTitle = title.replace(/'/g, "\\'");
+  // escape ' in title
+  const escapedTitle = title.replace(/'/g, "\\'");
 
-    const response = await drive.files.list({
-        q: `name = '${escapedTitle}' and '${folderId}' in parents and trashed = false`,
-        spaces: 'drive',
-        fields: 'files(id, name)',
+  const response = await drive.files.list({
+    q: `name = '${escapedTitle}' and '${folderId}' in parents and trashed = false`,
+    spaces: "drive",
+    fields: "files(id, name)",
+  });
+
+  if (response.data.files && response.data.files.length > 0) {
+    console.log(`Document found: ${response.data.files[0].id}`);
+    return response.data.files[0].id;
+  } else {
+    console.log("Document not found, creating a new one.");
+    const doc = await docs.documents.create({
+      requestBody: {
+        title: title,
+      },
     });
 
-    if (response.data.files && response.data.files.length > 0) {
-        console.log(`Document found: ${response.data.files[0].id}`);
-        return response.data.files[0].id;
-    } else {
-        console.log('Document not found, creating a new one.');
-        const doc = await docs.documents.create({
-            requestBody: {
-                title: title,
-            },
-        });
+    const documentId = doc.data.documentId;
 
-      const documentId = doc.data.documentId;
+    await drive.files.update({
+      fileId: documentId!,
+      addParents: folderId,
+      // removeParents: (await drive.files.get({ fileId: documentId! })).data.parents!.join(','),
+      // fields: 'id, parents',
+    });
 
-        await drive.files.update({
-            fileId: documentId!,
-            addParents: folderId,
-            // removeParents: (await drive.files.get({ fileId: documentId! })).data.parents!.join(','),
-            // fields: 'id, parents',
-        });
-
-        console.log(`Document created with ID: ${documentId}`);
-        return documentId;
-    }
+    console.log(`Document created with ID: ${documentId}`);
+    return documentId;
+  }
 }
 
-
 export async function wipeDocumentContents(auth, documentId) {
-  const docs = google.docs({ version: 'v1', auth });
+  const docs = google.docs({ version: "v1", auth });
   const document = await docs.documents.get({ documentId: documentId });
 
   // document.data.body.content is an array of 'google doc structures'
   // get the max value of `endIndex` to use for the deletion call
-  const maxIndex = Math.max(...document.data.body.content?.map((content) => content.endIndex))
+  const maxIndex = Math.max(
+    ...document.data.body.content?.map((content) => content.endIndex),
+  );
 
   if (maxIndex <= 2) {
-    return
+    return;
   }
 
   // Generate requests to delete all content. Adjust based on your document structure.
@@ -148,5 +161,5 @@ export async function wipeDocumentContents(auth, documentId) {
     },
   });
 
-  console.log('Document content wiped.');
+  console.log("Document content wiped.");
 }
